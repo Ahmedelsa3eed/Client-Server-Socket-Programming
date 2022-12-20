@@ -18,10 +18,12 @@
 char *ok = "HTTP/1.1 200 OK\r\n";
 char *not_found = "HTTP/1.1 404 Not Found\r\n";
 
-typedef enum RequestType{
+typedef enum RequestType {
     GET,
     POST,
+    WrongReq
 } RequestType;
+
 void sigchld_handler(int s)
 {
     // waitpid() might overwrite errno, so we save and restore it:
@@ -33,31 +35,32 @@ void sigchld_handler(int s)
     errno = saved_errno;
 }
 
-enum RequestType parseRequest(char *request) {
-    if (strstr(request, "GET") != NULL) {
+enum RequestType parseRequest(char *request)
+{
+    if (strstr(request, "GET") != NULL)
         return GET;
-    } else if (strstr(request, "POST") != NULL) {
+    else if (strstr(request, "POST") != NULL)
         return POST;
-    } else {
-        return -1;
-    }
+    else
+        return WrongReq;
 }
 
-char* getFileName(char *request) {
-    char *fileName = malloc(100);
+char *getFileName(char *request)
+{
+    char *fileName = (char *) malloc(100);
     char *token = strtok(request, " ");
     token = strtok(NULL, " ");
     strcpy(fileName, token);
     return fileName;
 }
 
-char* readFile(char *fileName) {
+char *readFile(char *fileName)
+{
     FILE *fp;
-    char *content = malloc(10000);
+    char *content = (char *) malloc(10000);
     fp = fopen(fileName, "r");
-    if (fp == NULL) {
+    if (fp == NULL)
         return NULL;
-    }
     char c = fgetc(fp);
     int i = 0;
     while (c != EOF) {
@@ -70,39 +73,39 @@ char* readFile(char *fileName) {
     return content;
 }
 
-void handleGetRequest(int client_fd, char *request) {
+void sendResponse(int client_fd, char *response)
+{
+    send(client_fd, response, strlen(response), 0);
+}
+
+void handleGetRequest(int client_fd, char *request)
+{
     char *fileName = getFileName(request);
     char *content = readFile(fileName);
-    if (content == NULL) {
+    if (content == NULL)
         sendResponse(client_fd, not_found);
-    } else {
+    else {
         sendResponse(client_fd, ok);
         sendResponse(client_fd, content);
     }
 }
 
-void handlePostRequest(int client_fd, char *request) {
-    
+void handlePostRequest(int client_fd, char *request)
+{
     sendResponse(client_fd, ok);
     int valread;
-    byte buffer[1024] = {0};
+    char buffer[1024] = {0};
     valread = read(client_fd, buffer, 1024);
     printf("server: message is %s\n", buffer);
-   
-    
 }
 
-void sendResponse(int client_fd, char *response) {
-    send(client_fd, response, strlen(response), 0);
-}
 /***
 this function will be called to handle each client
- I should mske local variables for each thread avoid getting the wrong value 
+ I should mske local variables for each thread avoid getting the wrong value
  from the global variables
 ***/
 void *handleClient(void *new_fd)
 {
-    
     // get the argument from the thread
     int client_fd = *(int *)new_fd;
     int valread;
@@ -113,27 +116,23 @@ void *handleClient(void *new_fd)
     printf("server: message is %s\n", buffer);
     printf("request type: %d\n", parseRequest(buffer));
 
-    if (requestType == GET)
-    {
+    if (requestType == GET) {
         printf("GET request\n");
         handleGetRequest(client_fd, buffer);
-
     }
-    else if (requestType == POST)
-    {
+    else if (requestType == POST) {
         printf("POST request\n");
         handlePostRequest(client_fd, buffer);
     }
-    else{
+    else {
         printf("Invalid request\n");
         sendResponse(client_fd, not_found);
     }
 
     // here I should wait time out till reciving an other request or close the connection
-    close(client_fd);            
-    return NULL;             
-
-}   
+    close(client_fd);
+    return NULL;
+}
 
 int main(int argc, char const *argv[])
 {
@@ -146,9 +145,7 @@ int main(int argc, char const *argv[])
 
     pthread_t thread_id;
 
-    // use AF_LOCAL for communication between processes on the same host
-    // For communicating between processes on different hosts connected by IPV4, we use AF_INET
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < -1) {
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("Socket Creation Failed!");
         exit(EXIT_FAILURE);
     }
@@ -181,13 +178,13 @@ int main(int argc, char const *argv[])
     while (1) {
         // Accept and delegate client conncection to worker thread
         if ((new_fd = accept(server_fd, (struct sockaddr *)&address,
-                                    (socklen_t *)&addrlen)) < 0) {
+                             (socklen_t *)&addrlen)) < 0) {
 
             perror("accept client conncetion has failed");
             exit(EXIT_FAILURE);
         }
-        
-        // TODO 
+
+        // TODO
         // parsing command and specify if it GET or POST ------------ DONE
         // if target file does not exists return error ------------------
         // transmit content of file (reads from the file and write on the socket) - in case of GET
@@ -195,9 +192,9 @@ int main(int argc, char const *argv[])
         // close if connection timed out
 
         printf("server: got connection\n");
-        
+
         pthread_t thread;
-        int threadid = pthread_create (&thread, NULL, &handleClient, &new_fd);
+        int threadid = pthread_create(&thread, NULL, &handleClient, &new_fd);
         if (threadid < 0) {
             perror("thread creation failed");
             exit(EXIT_FAILURE);

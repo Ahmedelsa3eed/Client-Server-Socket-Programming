@@ -1,3 +1,1 @@
-client_get server_file1.txt
-client_post server_file2.txt
-client_get server_file3.txt
+client_get home.txt
