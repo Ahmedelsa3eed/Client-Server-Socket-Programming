@@ -12,7 +12,7 @@
 
 int sock_fd = 0, client_fd;
 struct sockaddr_in serv_addr;
-char *hello = "GET request from client";
+char *http_version = " HTTP/1.1";
 char commands_buff[MAXDATASIZE] = {0};
 char buffer[MAXDATASIZE] = {0};
 
@@ -26,6 +26,7 @@ struct Command {
 void parse_commands();
 void parse_single_command();
 void command_handler();
+char* construct_get_req_header();
 
 int main(int argc, char const *argv[])
 {
@@ -57,7 +58,7 @@ int main(int argc, char const *argv[])
         return -1;
     }
 
-    if ((client_fd = connect(sock_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr))) < 0) {
+    if ((client_fd = connect(sock_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr))) == -1) {
         printf("\nConnection Failed \n");
         return -1;
     }
@@ -77,7 +78,7 @@ void parse_commands()
 {
     FILE *fptr = fopen("client_commands.txt", "r");
     if (fptr == NULL) {
-        printf("no such file");
+        printf("client_commands file missing");
         return;
     }
 
@@ -97,16 +98,20 @@ void parse_single_command()
     token = strtok(NULL, " ");
     command.filePath = (char *) malloc(strlen(token) + 1);
     strcpy(command.filePath, token);
-    command.port[strlen(command.filePath) - 1] = '\0'; // remove `\n`
+    command.filePath[strlen(command.filePath) - 1] = '\0'; // remove `\n`
 }
 
-void command_handler() {
+
+
+void command_handler()
+{
     if (strcmp(command.type, "client_get") == 0) {
-        send(sock_fd, hello, strlen(hello), 0);
+        char *req_header = construct_get_req_header();
+        send(sock_fd, req_header, strlen(req_header), 0);
         printf("GET request sent to server whose addr %s\n", command.hostName);
         
         read(sock_fd, buffer, 1024);
-        printf("%s\n", buffer);
+        printf("read from server \n%s\n", buffer);
         memset(buffer, 0, sizeof buffer);
     }
     else if (strcmp(command.type, "client_post") == 0) {
@@ -114,4 +119,13 @@ void command_handler() {
         printf("POST request sent to server whose addr %s\n", command.hostName);
     }
     else printf("Not valid command!\n");
+}
+
+char* construct_get_req_header()
+{
+    char *req_header = (char *) malloc(100);
+    strcpy(req_header,  "GET \\");
+    strcat(req_header, command.filePath);
+    // strcat(req_header, http_version);
+    return req_header;
 }
