@@ -7,10 +7,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
-
 #include <arpa/inet.h>
-#define PORT 8080 // the port client will be connecting to
-
 #define MAXDATASIZE 1024 // max number of bytes we can get at once
 
 int sock_fd = 0, client_fd;
@@ -45,16 +42,18 @@ int main(int argc, char const *argv[])
         command.port = "8080";
     }
 
-    if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    printf("%s\n", command.hostName);
+    printf("%s\n", command.port);
+
+    if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         printf("\n Socket creation error \n");
         return -1;
     }
 
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(PORT);
-
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
+    serv_addr.sin_port = htons(atoi(command.port));
+    // Convert IPv4 addresses from text to binary form
+    if (inet_pton(AF_INET, command.hostName, &serv_addr.sin_addr) == -1) {
         printf("\nInvalid address/ Address not supported \n");
         return -1;
     }
@@ -69,7 +68,7 @@ int main(int argc, char const *argv[])
     free(command.filePath);
     free(command.hostName);
     free(command.port);
-
+    
     close(client_fd);
     close(sock_fd);
     return 0;
@@ -99,6 +98,7 @@ void parse_single_command()
     token = strtok(NULL, " ");
     command.filePath = (char *) malloc(strlen(token) + 1);
     strcpy(command.filePath, token);
+    command.filePath[strlen(command.filePath) - 1] = '\0'; // remove `\n`
 }
 
 
@@ -109,7 +109,7 @@ void command_handler()
         char *req_header = construct_get_req_header();
         send(sock_fd, req_header, strlen(req_header), 0);
         printf("GET request sent to server whose addr %s\n", command.hostName);
-
+        
         read(sock_fd, buffer, 1024);
         printf("read from server \n%s\n", buffer);
         memset(buffer, 0, sizeof buffer);
@@ -124,7 +124,7 @@ void command_handler()
 char* construct_get_req_header()
 {
     char *req_header = (char *) malloc(100);
-    strcpy(req_header,  "GET /");
+    strcpy(req_header,  "GET \\");
     strcat(req_header, command.filePath);
     // strcat(req_header, http_version);
     return req_header;
