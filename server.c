@@ -117,7 +117,13 @@ void *handleClient(void *new_fd)
     int client_fd = *(int *)new_fd;
     int valread;
     char buffer[1024] = {0};
+    // the connection should wait for the client to send a request or for timeout
+    // to happen
+    // get time
+    // if time is greater than timeout then close the connection
+    // else wait for the client to send a request
 
+    
     valread = read(client_fd, buffer, 1024);
     RequestType requestType = parseRequest(buffer);
     printf("server: message is %s\n", buffer);
