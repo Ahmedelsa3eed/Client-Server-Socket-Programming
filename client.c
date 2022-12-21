@@ -71,7 +71,7 @@ int main(int argc, char const *argv[])
         return -1;
     }
 
-    printf("client: connected... \n");
+    printf("Client: connected... \n");
     parseCommands();
 
     free(command.type);
@@ -118,15 +118,19 @@ void commandHandler()
 {
     if (strcmp(command.type, "client_get") == 0) {
         char *req_header = constructGetReqHeader();
-        send(sock_fd, req_header, strlen(req_header), 0);
-        free(req_header);
-        size_t nBytes = read(sock_fd, buffer, MAXDATASIZE);
-        char *resStartLine = getResStartLine();
-        if (parseResponse(resStartLine) == OK) {
-            saveFile(command.filePath, nBytes, strlen(resStartLine));
+        if (send(sock_fd, req_header, strlen(req_header), 0) == -1) {
+            printf("client: Couldent send request!\n");
+            return;
         }
-        free(resStartLine);
-        memset(buffer, 0, sizeof(buffer));
+        free(req_header);
+        size_t nBytes;
+        if ((nBytes = read(sock_fd, buffer, MAXDATASIZE)) > 0) {
+            char *resStartLine = getResStartLine();
+            if (parseResponse(resStartLine) == OK) {
+                saveFile(command.filePath, nBytes, strlen(resStartLine));
+            }
+            memset(buffer, 0, sizeof(buffer));
+        }
     }
     else if (strcmp(command.type, "client_post") == 0) {
         send(sock_fd, postStartLine, strlen(postStartLine), 0);
@@ -147,6 +151,7 @@ char* constructGetReqHeader()
     strcpy(req_header,  "GET /");
     strcat(req_header, command.filePath);
     // strcat(req_header, httpVersion);
+    // strcat(req_header, "\r\n");
     return req_header;
 }
 
@@ -188,7 +193,7 @@ void saveFile(char *filePath, size_t nBytes, size_t startLineSize)
         fwrite(&buffer[toBeWritten], sizeof(char), 1, fptr);
         toBeWritten++;
     }
-    printf("Received file saved in: %s", newfilePath);
+    printf("Received file saved in: %s\n", newfilePath);
     free(newfilePath);
     fclose(fptr);
 }

@@ -11,10 +11,9 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <pthread.h>
-
 #define PORT 8080 // the port users will be connecting to
-
 #define BACKLOG 10 // Maximum outstanding connection requests
+
 char *ok = "HTTP/1.1 200 OK\r\n";
 char *not_found = "HTTP/1.1 404 Not Found\r\n";
 
