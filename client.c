@@ -8,13 +8,15 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#define MAXDATASIZE 1024 // max number of bytes we can get at once
+#include <libgen.h>
+#define MAXDATASIZE 4096 // 4k bytes: max number of bytes we can get at once
 
 int sock_fd = 0, client_fd;
 struct sockaddr_in serv_addr;
-char *http_version = " HTTP/1.1";
+char *httpVersion = " HTTP/1.1";
+char *postStartLine = "POST / HTTP/1.1\r\n";
 char commands_buff[MAXDATASIZE] = {0};
-char buffer[MAXDATASIZE] = {0};
+unsigned char buffer[MAXDATASIZE] = {0};
 
 struct Command {
     char *type;
@@ -23,10 +25,18 @@ struct Command {
     char *port;
 } command;
 
-void parse_commands();
-void parse_single_command();
-void command_handler();
-char* construct_get_req_header();
+typedef enum ResponseType {
+    OK,
+    ERROR
+} ResponseType;
+
+void parseCommands();
+void parseSingleCommand();
+void commandHandler();
+char* constructGetReqHeader();
+void readFile(char *fileName);
+void saveFile(char *fileName);
+enum ResponseType parseResponse(char *res);
 
 int main(int argc, char const *argv[])
 {
@@ -62,7 +72,7 @@ int main(int argc, char const *argv[])
         printf("\nConnection Failed \n");
         return -1;
     }
-    parse_commands();
+    parseCommands();
 
     free(command.type);
     free(command.filePath);
@@ -74,7 +84,7 @@ int main(int argc, char const *argv[])
     return 0;
 }
 
-void parse_commands()
+void parseCommands()
 {
     FILE *fptr = fopen("client_commands.txt", "r");
     if (fptr == NULL) {
@@ -83,13 +93,13 @@ void parse_commands()
     }
 
     while (fgets(commands_buff, MAXDATASIZE, fptr) != NULL) {
-        parse_single_command();
+        parseSingleCommand();
         memset(commands_buff, 0, sizeof commands_buff);
-        command_handler();
+        commandHandler();
     }
 }
 
-void parse_single_command()
+void parseSingleCommand()
 {
     char *token = strtok(commands_buff, " ");
     command.type = (char *) malloc(strlen(token) + 1);
@@ -98,34 +108,71 @@ void parse_single_command()
     token = strtok(NULL, " ");
     command.filePath = (char *) malloc(strlen(token) + 1);
     strcpy(command.filePath, token);
-    command.filePath[strlen(command.filePath) - 1] = '\0'; // remove `\n`
 }
 
-
-
-void command_handler()
+void commandHandler()
 {
     if (strcmp(command.type, "client_get") == 0) {
-        char *req_header = construct_get_req_header();
+        char *req_header = constructGetReqHeader();
         send(sock_fd, req_header, strlen(req_header), 0);
-        printf("GET request sent to server whose addr %s\n", command.hostName);
-        
-        read(sock_fd, buffer, 1024);
-        printf("read from server \n%s\n", buffer);
-        memset(buffer, 0, sizeof buffer);
+
+        read(sock_fd, buffer, MAXDATASIZE);
+        saveFile(command.filePath);
+        memset(buffer, 0, sizeof(buffer));
     }
     else if (strcmp(command.type, "client_post") == 0) {
-        send(sock_fd, "POST req", 8, 0);
-        printf("POST request sent to server whose addr %s\n", command.hostName);
+        send(sock_fd, postStartLine, strlen(postStartLine), 0);
+        printf("POST request sent to server");
+        char resBuffer[1024] = {0};
+        read(client_fd, resBuffer, 1024);
+        if (parseResponse(resBuffer) == OK) {
+            readFile(command.filePath);
+            send(sock_fd, buffer, MAXDATASIZE, 0);
+            memset(buffer, 0, sizeof(buffer));
+        }
     }
     else printf("Not valid command!\n");
 }
 
-char* construct_get_req_header()
+char* constructGetReqHeader()
 {
     char *req_header = (char *) malloc(100);
-    strcpy(req_header,  "GET \\");
+    strcpy(req_header,  "GET /");
     strcat(req_header, command.filePath);
-    // strcat(req_header, http_version);
+    // strcat(req_header, httpVersion);
     return req_header;
+}
+
+void readFile(char *fileName)
+{
+    FILE *fptr;
+    if ((fptr = fopen(fileName, "rb")) == NULL) {
+        fprintf(stderr, "Couldn't open file for reading. \n");
+        return NULL;
+    }
+    fread(buffer, sizeof(buffer), MAXDATASIZE, fptr);
+    fclose(fptr);
+}
+
+void saveFile(char *filePath)
+{
+    char * newfilePath = "";
+    strcat(newfilePath, "clientGetFiles/");
+    strcat(newfilePath, basename(filePath));
+
+    FILE *fptr;
+    if ((fptr = fopen(newfilePath, "wb")) == NULL) {
+        fprintf(stderr, "Couldn't open file for writing. \n");
+        return;
+    }
+    fwrite(buffer, sizeof(buffer), MAXDATASIZE, fptr);
+    fclose(fptr);
+}
+
+enum ResponseType parseResponse(char *res)
+{
+    if (strstr(res, "OK") != NULL)
+        return OK;
+    else
+        return ERROR;
 }
