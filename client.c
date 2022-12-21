@@ -9,14 +9,14 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <libgen.h>
-#define MAXDATASIZE 4096 // 4k bytes: max number of bytes we can get at once
+#define MAXDATASIZE 1024 // 4k bytes: max number of bytes we can get at once
 
 int sock_fd = 0, client_fd;
 struct sockaddr_in serv_addr;
 char *httpVersion = " HTTP/1.1";
 char *postStartLine = "POST / HTTP/1.1\r\n";
 char commands_buff[MAXDATASIZE] = {0};
-unsigned char buffer[MAXDATASIZE] = {0};
+char buffer[MAXDATASIZE] = {0};
 
 struct Command {
     char *type;
@@ -35,8 +35,9 @@ void parseSingleCommand();
 void commandHandler();
 char* constructGetReqHeader();
 void readFile(char *fileName);
-void saveFile(char *fileName);
+void saveFile(char *filePath, size_t nBytes, size_t startLineSize);
 enum ResponseType parseResponse(char *res);
+char *getResStartLine();
 
 int main(int argc, char const *argv[])
 {
@@ -51,9 +52,6 @@ int main(int argc, char const *argv[])
     else {
         command.port = "8080";
     }
-
-    printf("%s\n", command.hostName);
-    printf("%s\n", command.port);
 
     if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         printf("\n Socket creation error \n");
@@ -72,6 +70,8 @@ int main(int argc, char const *argv[])
         printf("\nConnection Failed \n");
         return -1;
     }
+
+    printf("client: connected... \n");
     parseCommands();
 
     free(command.type);
@@ -115,9 +115,10 @@ void commandHandler()
     if (strcmp(command.type, "client_get") == 0) {
         char *req_header = constructGetReqHeader();
         send(sock_fd, req_header, strlen(req_header), 0);
-
-        read(sock_fd, buffer, MAXDATASIZE);
-        saveFile(command.filePath);
+        free(req_header);
+        size_t nBytes = read(sock_fd, buffer, MAXDATASIZE);
+        char *resStartLine = getResStartLine();
+        saveFile(command.filePath, nBytes, strlen(resStartLine));
         memset(buffer, 0, sizeof(buffer));
     }
     else if (strcmp(command.type, "client_post") == 0) {
@@ -143,20 +144,31 @@ char* constructGetReqHeader()
     return req_header;
 }
 
+char *getResStartLine()
+{
+    char *header = (char *) malloc(50);
+    header = strtok(buffer, "\r\n");
+    printf("%s\n", header);
+    return header;
+}
+
 void readFile(char *fileName)
 {
     FILE *fptr;
     if ((fptr = fopen(fileName, "rb")) == NULL) {
         fprintf(stderr, "Couldn't open file for reading. \n");
-        return NULL;
+        return;
     }
-    fread(buffer, sizeof(buffer), MAXDATASIZE, fptr);
+    unsigned int nBytes = 0;
+    while(fread(&buffer[nBytes], sizeof(char), 1, fptr) == 1) {
+        nBytes++;
+    }
     fclose(fptr);
 }
 
-void saveFile(char *filePath)
+void saveFile(char *filePath, size_t nBytes, size_t startLineSize)
 {
-    char * newfilePath = "";
+    char *newfilePath = (char *) malloc(50);
     strcat(newfilePath, "clientGetFiles/");
     strcat(newfilePath, basename(filePath));
 
@@ -165,7 +177,12 @@ void saveFile(char *filePath)
         fprintf(stderr, "Couldn't open file for writing. \n");
         return;
     }
-    fwrite(buffer, sizeof(buffer), MAXDATASIZE, fptr);
+    int toBeWritten = startLineSize + 2;
+    while (toBeWritten < nBytes) {
+        fwrite(&buffer[toBeWritten], sizeof(char), 1, fptr);
+        toBeWritten++;
+    }
+    free(newfilePath);
     fclose(fptr);
 }
 

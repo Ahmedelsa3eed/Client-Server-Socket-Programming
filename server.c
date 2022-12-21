@@ -51,7 +51,12 @@ char *getFileName(char *request)
     char *token = strtok(request, " ");
     token = strtok(NULL, " ");
     strcpy(fileName, token);
-    return fileName;
+    // add . to the file name
+    char *temp = (char *)malloc(100);
+    strcpy(temp, ".");
+    strcat(temp, fileName);
+    free(fileName);
+    return temp;
 }
 
 char *readFile(char *fileName)
@@ -82,12 +87,14 @@ void handleGetRequest(int client_fd, char *request)
 {
     char *fileName = getFileName(request);
     char *content = readFile(fileName);
+    free(fileName);
     if (content == NULL)
         sendResponse(client_fd, not_found);
     else {
         sendResponse(client_fd, ok);
         sendResponse(client_fd, content);
     }
+    free(content);
 }
 
 void handlePostRequest(int client_fd, char *request)
