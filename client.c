@@ -7,15 +7,14 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
-
 #include <arpa/inet.h>
-#define PORT 8080 // the port client will be connecting to
-
-#define MAXDATASIZE 1024 // max number of bytes we can get at once
+#include <libgen.h>
+#define MAXDATASIZE 1024 // 4k bytes: max number of bytes we can get at once
 
 int sock_fd = 0, client_fd;
 struct sockaddr_in serv_addr;
-char *http_version = " HTTP/1.1";
+char *httpVersion = " HTTP/1.1";
+char *postStartLine = "POST / HTTP/1.1\r\n";
 char commands_buff[MAXDATASIZE] = {0};
 char buffer[MAXDATASIZE] = {0};
 
@@ -26,10 +25,19 @@ struct Command {
     char *port;
 } command;
 
-void parse_commands();
-void parse_single_command();
-void command_handler();
-char* construct_get_req_header();
+typedef enum ResponseType {
+    OK,
+    ERROR
+} ResponseType;
+
+void parseCommands();
+void parseSingleCommand();
+void commandHandler();
+char* constructGetReqHeader();
+void readFile(char *fileName);
+void saveFile(char *filePath, size_t nBytes, size_t startLineSize);
+enum ResponseType parseResponse(char *res);
+char *getResStartLine();
 
 int main(int argc, char const *argv[])
 {
@@ -42,19 +50,18 @@ int main(int argc, char const *argv[])
         strcpy(command.port, argv[2]);
     }
     else {
-        command.port = "8080";
+        command.port = "80";
     }
 
-    if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         printf("\n Socket creation error \n");
         return -1;
     }
 
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(PORT);
-
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
+    serv_addr.sin_port = htons(atoi(command.port));
+    // Convert IPv4 addresses from text to binary form
+    if (inet_pton(AF_INET, command.hostName, &serv_addr.sin_addr) == -1) {
         printf("\nInvalid address/ Address not supported \n");
         return -1;
     }
@@ -63,19 +70,21 @@ int main(int argc, char const *argv[])
         printf("\nConnection Failed \n");
         return -1;
     }
-    parse_commands();
+
+    printf("Client: connected... \n");
+    parseCommands();
 
     free(command.type);
     free(command.filePath);
     free(command.hostName);
     free(command.port);
-
+    
     close(client_fd);
     close(sock_fd);
     return 0;
 }
 
-void parse_commands()
+void parseCommands()
 {
     FILE *fptr = fopen("client_commands.txt", "r");
     if (fptr == NULL) {
@@ -84,13 +93,13 @@ void parse_commands()
     }
 
     while (fgets(commands_buff, MAXDATASIZE, fptr) != NULL) {
-        parse_single_command();
+        parseSingleCommand();
         memset(commands_buff, 0, sizeof commands_buff);
-        command_handler();
+        commandHandler();
     }
 }
 
-void parse_single_command()
+void parseSingleCommand()
 {
     char *token = strtok(commands_buff, " ");
     command.type = (char *) malloc(strlen(token) + 1);
@@ -99,33 +108,100 @@ void parse_single_command()
     token = strtok(NULL, " ");
     command.filePath = (char *) malloc(strlen(token) + 1);
     strcpy(command.filePath, token);
+    size_t pathSize = strlen(command.filePath);
+    if (command.filePath[pathSize - 1] == '\n') {
+        command.filePath[pathSize - 1] = '\0';
+    }
 }
 
-
-
-void command_handler()
+void commandHandler()
 {
     if (strcmp(command.type, "client_get") == 0) {
-        char *req_header = construct_get_req_header();
-        send(sock_fd, req_header, strlen(req_header), 0);
-        printf("GET request sent to server whose addr %s\n", command.hostName);
-
-        read(sock_fd, buffer, 1024);
-        printf("read from server \n%s\n", buffer);
-        memset(buffer, 0, sizeof buffer);
+        char *req_header = constructGetReqHeader();
+        if (send(sock_fd, req_header, strlen(req_header), 0) == -1) {
+            printf("client: Couldent send request!\n");
+            return;
+        }
+        free(req_header);
+        size_t nBytes;
+        if ((nBytes = read(sock_fd, buffer, MAXDATASIZE)) > 0) {
+            char *resStartLine = getResStartLine();
+            if (parseResponse(resStartLine) == OK) {
+                saveFile(command.filePath, nBytes, strlen(resStartLine));
+            }
+            memset(buffer, 0, sizeof(buffer));
+        }
     }
     else if (strcmp(command.type, "client_post") == 0) {
-        send(sock_fd, "POST req", 8, 0);
-        printf("POST request sent to server whose addr %s\n", command.hostName);
+        send(sock_fd, postStartLine, strlen(postStartLine), 0);
+        char resBuffer[1024] = {0};
+        read(client_fd, resBuffer, 1024);
+        if (parseResponse(resBuffer) == OK) {
+            readFile(command.filePath);
+            send(sock_fd, buffer, MAXDATASIZE, 0);
+            memset(buffer, 0, sizeof(buffer));
+        }
     }
-    else printf("Not valid command!\n");
+    else printf("Not supported client command!\n");
 }
 
-char* construct_get_req_header()
+char* constructGetReqHeader()
 {
     char *req_header = (char *) malloc(100);
     strcpy(req_header,  "GET /");
     strcat(req_header, command.filePath);
-    // strcat(req_header, http_version);
+    // strcat(req_header, httpVersion);
+    // strcat(req_header, "\r\n");
     return req_header;
+}
+
+char *getResStartLine()
+{
+    char *header = (char *) malloc(50);
+    header = strtok(buffer, "\r\n");
+    printf("%s\n", header);
+    return header;
+}
+
+void readFile(char *fileName)
+{
+    FILE *fptr;
+    if ((fptr = fopen(fileName, "rb")) == NULL) {
+        fprintf(stderr, "Couldn't open file for reading. \n");
+        return;
+    }
+    unsigned int nBytes = 0;
+    while(fread(&buffer[nBytes], sizeof(char), 1, fptr) == 1) {
+        nBytes++;
+    }
+    fclose(fptr);
+}
+
+void saveFile(char *filePath, size_t nBytes, size_t startLineSize)
+{
+    char *newfilePath = (char *) malloc(50);
+    strcat(newfilePath, "clientGetFiles/");
+    strcat(newfilePath, basename(filePath));
+
+    FILE *fptr;
+    if ((fptr = fopen(newfilePath, "wb")) == NULL) {
+        fprintf(stderr, "Couldn't open file for writing. \n");
+        return;
+    }
+    int toBeWritten = startLineSize + 2;
+    while (toBeWritten < nBytes) {
+        fwrite(&buffer[toBeWritten], sizeof(char), 1, fptr);
+        toBeWritten++;
+    }
+    printf("Received file saved in: %s\n", newfilePath);
+    free(newfilePath);
+    fclose(fptr);
+}
+
+enum ResponseType parseResponse(char *res)
+{
+    if (strstr(res, "OK") != NULL)
+        return OK;
+    else
+        return ERROR;
 }

@@ -1,1 +1,3 @@
 client_get home.txt
+client_get home.txt
+client_post home.txt
