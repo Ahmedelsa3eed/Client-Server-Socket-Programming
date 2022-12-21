@@ -11,6 +11,9 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <pthread.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <sys/time.h>
 
 #define PORT 8080 // the port users will be connecting to
 
@@ -24,6 +27,12 @@ typedef enum RequestType {
     WrongReq
 } RequestType;
 
+typedef struct timeOutCalc {
+    clock_t *start;
+    int *loc;
+    int maxTime;
+    int new_fd;
+} timeOutCalc;
 void sigchld_handler(int s)
 {
     // waitpid() might overwrite errno, so we save and restore it:
@@ -104,40 +113,68 @@ void handlePostRequest(int client_fd, char *request)
     printf("server: message is %s\n", buffer);
 }
 
+void *calculateTimeOut(void *arg)
+{
+    timeOutCalc *timeOut = (timeOutCalc *) arg;
+    clock_t *start = timeOut->start;
+    int *loc = timeOut->loc;
+    int maxTime = timeOut->maxTime;
+    int new_fd = timeOut->new_fd;
+
+    while ( (double)(clock() - *start) < maxTime * CLOCKS_PER_SEC ) {// wait for 10 seconds to get the request from the client
+
+        if (*loc == 1) { // if the request is received
+            printf("server receive request from client %d\n", new_fd);
+            printf("server received request at %ld\n", clock());
+            
+            while (*loc == 1) {
+                // wait for the client to send the request
+            }
+            printf("Waited for 10 seconds, closing the connection\n");
+            printf("new start time is %ld\n", *start);
+            // start get updated in the client thread and the same for the loc
+        }
+    }
+    *start = -1;// reset the start time to -1 to indicate that the connection is closed
+    close(new_fd); // close the connection
+    pthread_exit(NULL);// exit the thread
+}
+
 /***
 this function will be called to handle each client
- I should mske local variables for each thread avoid getting the wrong value
+ I should make local variables for each thread avoid getting the wrong value
  from the global variables
 ***/
-void *handleClient(void *new_fd)
-{
+void *handleClient(void *new_fd) {
     // get the argument from the thread
-    int client_fd = *(int *)new_fd;
+    int client_fd = *(int *) new_fd;
+    clock_t startTimeInMillis = clock();
+    int loc = 0;
+    timeOutCalc *timeOut = {startTimeInMillis, loc, 10, client_fd};
+    pthread_t timeOutThread;
+    pthread_create(&timeOutThread, NULL, calculateTimeOut, &timeOut);
     int valread;
     char buffer[1024] = {0};
-    // the connection should wait for the client to send a request or for timeout
-    // to happen
-    // get time
-    // if time is greater than timeout then close the connection
-    // else wait for the client to send a request
 
-    
-    valread = read(client_fd, buffer, 1024);
-    RequestType requestType = parseRequest(buffer);
-    printf("server: message is %s\n", buffer);
-    printf("request type: %d\n", parseRequest(buffer));
+    while (startTimeInMillis != -1){
+        loc = 0 // Make the calculateTimeOut thread start waiting the time out if the client doesn't send the request in 10 seconds
+        valread = read(client_fd, buffer, 1024);
+        loc = 1;// Make the calculateTimeOut thread stop waiting the time out if the client sends the request in 10 seconds
+        RequestType requestType = parseRequest(buffer);
+        printf("server: message is %s\n", buffer);
+        printf("request type: %d\n", parseRequest(buffer));
 
-    if (requestType == GET) {
-        printf("GET request\n");
-        handleGetRequest(client_fd, buffer);
-    }
-    else if (requestType == POST) {
-        printf("POST request\n");
-        handlePostRequest(client_fd, buffer);
-    }
-    else {
-        printf("Invalid request\n");
-        sendResponse(client_fd, not_found);
+        if (requestType == GET) {
+            printf("GET request\n");
+            handleGetRequest(client_fd, buffer);
+        } else if (requestType == POST) {
+            printf("POST request\n");
+            handlePostRequest(client_fd, buffer);
+        } else {
+            printf("Invalid request\n");
+            sendResponse(client_fd, not_found);
+        }
+        startTimeInMillis = clock();// reset the start time for the calculateTimeOut thread then it will start waiting for 10 seconds again
     }
 
     // here I should wait time out till reciving an other request or close the connection
