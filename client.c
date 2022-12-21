@@ -50,7 +50,7 @@ int main(int argc, char const *argv[])
         strcpy(command.port, argv[2]);
     }
     else {
-        command.port = "8080";
+        command.port = "80";
     }
 
     if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -71,7 +71,7 @@ int main(int argc, char const *argv[])
         return -1;
     }
 
-    printf("client: connected... \n");
+    printf("Client: connected... \n");
     parseCommands();
 
     free(command.type);
@@ -108,22 +108,32 @@ void parseSingleCommand()
     token = strtok(NULL, " ");
     command.filePath = (char *) malloc(strlen(token) + 1);
     strcpy(command.filePath, token);
+    size_t pathSize = strlen(command.filePath);
+    if (command.filePath[pathSize - 1] == '\n') {
+        command.filePath[pathSize - 1] = '\0';
+    }
 }
 
 void commandHandler()
 {
     if (strcmp(command.type, "client_get") == 0) {
         char *req_header = constructGetReqHeader();
-        send(sock_fd, req_header, strlen(req_header), 0);
+        if (send(sock_fd, req_header, strlen(req_header), 0) == -1) {
+            printf("client: Couldent send request!\n");
+            return;
+        }
         free(req_header);
-        size_t nBytes = read(sock_fd, buffer, MAXDATASIZE);
-        char *resStartLine = getResStartLine();
-        saveFile(command.filePath, nBytes, strlen(resStartLine));
-        memset(buffer, 0, sizeof(buffer));
+        size_t nBytes;
+        if ((nBytes = read(sock_fd, buffer, MAXDATASIZE)) > 0) {
+            char *resStartLine = getResStartLine();
+            if (parseResponse(resStartLine) == OK) {
+                saveFile(command.filePath, nBytes, strlen(resStartLine));
+            }
+            memset(buffer, 0, sizeof(buffer));
+        }
     }
     else if (strcmp(command.type, "client_post") == 0) {
         send(sock_fd, postStartLine, strlen(postStartLine), 0);
-        printf("POST request sent to server");
         char resBuffer[1024] = {0};
         read(client_fd, resBuffer, 1024);
         if (parseResponse(resBuffer) == OK) {
@@ -132,7 +142,7 @@ void commandHandler()
             memset(buffer, 0, sizeof(buffer));
         }
     }
-    else printf("Not valid command!\n");
+    else printf("Not supported client command!\n");
 }
 
 char* constructGetReqHeader()
@@ -141,6 +151,7 @@ char* constructGetReqHeader()
     strcpy(req_header,  "GET /");
     strcat(req_header, command.filePath);
     // strcat(req_header, httpVersion);
+    // strcat(req_header, "\r\n");
     return req_header;
 }
 
@@ -182,6 +193,7 @@ void saveFile(char *filePath, size_t nBytes, size_t startLineSize)
         fwrite(&buffer[toBeWritten], sizeof(char), 1, fptr);
         toBeWritten++;
     }
+    printf("Received file saved in: %s\n", newfilePath);
     free(newfilePath);
     fclose(fptr);
 }
