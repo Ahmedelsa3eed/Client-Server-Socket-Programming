@@ -9,7 +9,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <libgen.h>
-#define MAXDATASIZE 1024 // 4k bytes: max number of bytes we can get at once
+#define MAXDATASIZE 1024 // 1k bytes: max number of bytes we can get at once
 
 int sock_fd = 0, client_fd;
 struct sockaddr_in serv_addr;
@@ -25,10 +25,10 @@ struct Command {
     char *port;
 } command;
 
-typedef enum ResponseType {
+typedef enum responseType {
     OK,
-    ERROR
-} ResponseType;
+    NOTFOUND
+} RESPONSETYPE;
 
 void parseCommands();
 void parseSingleCommand();
@@ -36,7 +36,7 @@ void commandHandler();
 char* constructGetReqHeader();
 void readFile(char *fileName);
 void saveFile(char *filePath, size_t nBytes, size_t startLineSize);
-enum ResponseType parseResponse(char *res);
+RESPONSETYPE parseResponse(char *res);
 char *getResStartLine();
 
 int main(int argc, char const *argv[])
@@ -147,20 +147,24 @@ void commandHandler()
 
 char* constructGetReqHeader()
 {
+    // example of request start line
+    // GET /index.html HTTP/1.1\r\n
     char *req_header = (char *) malloc(100);
     strcpy(req_header,  "GET /");
     strcat(req_header, command.filePath);
-    // strcat(req_header, httpVersion);
-    // strcat(req_header, "\r\n");
+    strcat(req_header, httpVersion);
+    strcat(req_header, "\r\n");
     return req_header;
 }
 
 char *getResStartLine()
 {
-    char *header = (char *) malloc(50);
-    header = strtok(buffer, "\r\n");
-    printf("%s\n", header);
-    return header;
+    // example of response start line
+    // HTTP/1.1 200 OK\r\n
+    char *resStartLine = (char *) malloc(50);
+    resStartLine = strtok(buffer, "\r\n");
+    printf("Server: %s\n", resStartLine);
+    return resStartLine;
 }
 
 void readFile(char *fileName)
@@ -193,15 +197,15 @@ void saveFile(char *filePath, size_t nBytes, size_t startLineSize)
         fwrite(&buffer[toBeWritten], sizeof(char), 1, fptr);
         toBeWritten++;
     }
-    printf("Received file saved in: %s\n", newfilePath);
+    printf("Client: received file saved in: %s\n", newfilePath);
     free(newfilePath);
     fclose(fptr);
 }
 
-enum ResponseType parseResponse(char *res)
+RESPONSETYPE parseResponse(char *res)
 {
     if (strstr(res, "OK") != NULL)
         return OK;
     else
-        return ERROR;
+        return NOTFOUND;
 }

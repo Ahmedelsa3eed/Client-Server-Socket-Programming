@@ -34,7 +34,7 @@ void sigchld_handler(int s)
     errno = saved_errno;
 }
 
-enum RequestType parseRequest(char *request)
+RequestType parseRequest(char *request)
 {
     if (strstr(request, "GET") != NULL)
         return GET;
