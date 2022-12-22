@@ -13,8 +13,7 @@
 
 int sock_fd = 0, client_fd;
 struct sockaddr_in serv_addr;
-char *httpVersion = " HTTP/1.1";
-char *postStartLine = "POST / HTTP/1.1\r\n";
+char *httpVersion = " HTTP/1.1\r\n";
 char commands_buff[MAXDATASIZE] = {0};
 char buffer[MAXDATASIZE] = {0};
 
@@ -149,7 +148,7 @@ char* constructGetReqHeader()
     strcpy(req_header,  "GET /");
     strcat(req_header, command.filePath);
     strcat(req_header, httpVersion);
-    strcat(req_header, "\r\n\r\n");
+    strcat(req_header, "\r\n");
     return req_header;
 }
 
@@ -167,7 +166,9 @@ void constructPostReqHeader()
 {
     // example of post request start line
     // POST / HTTP/1.1\r\n
-    strcpy(buffer, postStartLine);
+    strcpy(buffer, "POST /");
+    strcpy(buffer, command.filePath);
+    strcpy(buffer, httpVersion);
     strcat(buffer, "Host: ");
     strcat(buffer, command.hostName);
     strcat(buffer, "\r\n");
