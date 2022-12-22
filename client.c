@@ -41,27 +41,27 @@ char *getResStartLine();
 
 int main(int argc, char const *argv[])
 {
-    if (argc > 1) {
-        command.hostName = (char *)malloc(strlen(argv[1]) + 1);
-        strcpy(command.hostName, argv[1]);
-    }
-    if (argc > 2) {
-        command.port = (char *)malloc(strlen(argv[2]) + 1);
-        strcpy(command.port, argv[2]);
-    }
-    else {
-        command.port = "80";
-    }
-
+//    if (argc > 1) {
+//        command.hostName = (char *)malloc(strlen(argv[1]) + 1);
+//        strcpy(command.hostName, argv[1]);
+//    }
+//    if (argc > 2) {
+//        command.port = (char *)malloc(strlen(argv[2]) + 1);
+//        strcpy(command.port, argv[2]);
+//    }
+//    else {
+//        command.port = "80";
+//    }
+//
     if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         printf("\n Socket creation error \n");
         return -1;
     }
 
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(atoi(command.port));
+    serv_addr.sin_port = htons(atoi("8080"));
     // Convert IPv4 addresses from text to binary form
-    if (inet_pton(AF_INET, command.hostName, &serv_addr.sin_addr) == -1) {
+    if (inet_pton(AF_INET,"127.0.0.1", &serv_addr.sin_addr) == -1) {
         printf("\nInvalid address/ Address not supported \n");
         return -1;
     }
@@ -78,9 +78,7 @@ int main(int argc, char const *argv[])
     free(command.filePath);
     free(command.hostName);
     free(command.port);
-    
-    close(client_fd);
-    close(sock_fd);
+
     return 0;
 }
 
@@ -96,6 +94,7 @@ void parseCommands()
         parseSingleCommand();
         memset(commands_buff, 0, sizeof commands_buff);
         commandHandler();
+        sleep(2);
     }
 }
 
@@ -124,6 +123,7 @@ void commandHandler()
         }
         free(req_header);
         size_t nBytes;
+        memset(buffer, 0, sizeof(buffer));
         if ((nBytes = read(sock_fd, buffer, MAXDATASIZE)) > 0) {
             char *resStartLine = getResStartLine();
             if (parseResponse(resStartLine) == OK) {
@@ -131,11 +131,13 @@ void commandHandler()
             }
             memset(buffer, 0, sizeof(buffer));
         }
+
     }
     else if (strcmp(command.type, "client_post") == 0) {
         send(sock_fd, postStartLine, strlen(postStartLine), 0);
         char resBuffer[1024] = {0};
-        read(client_fd, resBuffer, 1024);
+        read(sock_fd, resBuffer, 1024);
+        printf("client: %s\n", resBuffer);
         if (parseResponse(resBuffer) == OK) {
             readFile(command.filePath);
             send(sock_fd, buffer, MAXDATASIZE, 0);
