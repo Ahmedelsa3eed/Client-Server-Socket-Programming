@@ -15,9 +15,9 @@
 
 #define PORT 8080 // the port users will be connecting to
 #define MaxClients 10
-#define MAXDATASIZE 1024 // 4k bytes: max number of bytes we can get at once
-#define BACKLOG 10 // how many pending connections queue will hold
-#define MAX_TIMEOUT 10 // 10 seconds
+#define MAXDATASIZE 1024 // 1k bytes: max number of bytes we can get at once
+#define BACKLOG 10       // how many pending connections queue will hold
+#define MAX_TIMEOUT 10   // 10 seconds
 
 char *ok = "HTTP/1.1 200 OK\r\n";
 char *not_found = "HTTP/1.1 404 Not Found\r\n";
@@ -40,7 +40,6 @@ int numClients = 0;
 int clientSockets[MaxClients];
 double connectionTimeOut;
 
-
 void sigchld_handler(int s);
 
 enum RequestType parseRequest(char *request);
@@ -58,16 +57,12 @@ void handlePostRequest(int client_fd, char *request);
 
 void *calculateTimeOut(void *arg);
 
-
-void *handleClient(void *new_fd) ;
-
+void *handleClient(void *new_fd);
 
 // function to remove the socket descriptor
 void removeSocket(int socket);
 
 void updateTimeOut();
-
-
 
 int main(int argc, char const *argv[])
 {
@@ -126,7 +121,7 @@ int main(int argc, char const *argv[])
             updateTimeOut();
             pthread_mutex_unlock(&lock);
             pthread_t thread;
-            pthread_create(&thread, NULL, handleClient, (void *) &new_fd);
+            pthread_create(&thread, NULL, handleClient, (void *)&new_fd);
             if (thread < 0) {
                 perror("thread creation failed");
                 exit(EXIT_FAILURE);
@@ -136,15 +131,8 @@ int main(int argc, char const *argv[])
             printf("server: too many clients\n");
             close(new_fd);
         }
-
-
-
     }
-
 }
-
-
-
 
 void sigchld_handler(int s)
 {
@@ -168,12 +156,12 @@ RequestType parseRequest(char *request)
 
 char *getFileName(char *request)
 {
-    char *fileName = (char *) malloc(100);
+    char *fileName = (char *)malloc(100);
     char *token = strtok(request, " ");
     token = strtok(NULL, " ");
     strcpy(fileName, token);
     /// add . to the file name
-    char *temp = (char *) malloc(100);
+    char *temp = (char *)malloc(100);
     strcpy(temp, ".");
     strcat(temp, fileName);
     free(fileName);
@@ -183,12 +171,12 @@ char *getFileName(char *request)
 char *readFile(char *fileName)
 {
     FILE *fp;
-    char *content = (char *) malloc(10000);
+    char *content = (char *)malloc(10000);
     fp = fopen(fileName, "rb");
     if (fp == NULL)
         return NULL;
     unsigned int nBytes = 0;
-    while(fread(&content[nBytes], sizeof(char), 1, fp) == 1) {
+    while (fread(&content[nBytes], sizeof(char), 1, fp) == 1) {
         nBytes++;
     }
     fclose(fp);
@@ -213,7 +201,7 @@ void handleGetRequest(int client_fd, char *request)
 }
 void saveFile(char *filePath, size_t nBytes, char *buffer)
 {
-    char *newfilePath = (char *) malloc(50);
+    char *newfilePath = (char *)malloc(50);
     strcat(newfilePath, "serverPostFiles/");
     strcat(newfilePath, basename(filePath));
 
@@ -238,10 +226,11 @@ void handlePostRequest(int client_fd, char *request)
     int valread;
     char buffer[1024] = {0};
     valread = read(client_fd, buffer, 1024);
-    saveFile( "ay haga", valread, buffer);
+    saveFile("ay haga", valread, buffer);
 }
 
-void removeSocket(int socket) {
+void removeSocket(int socket)
+{
     int i = 0;
     for (i = 0; i < MaxClients; i++) {
         // if position is empty
@@ -260,13 +249,14 @@ void removeSocket(int socket) {
 }
 void *calculateTimeOut(void *arg)
 {
-    timeOutCalc *timeOut = (timeOutCalc *) arg;
-    printf( "I am in the time out thread");
+    timeOutCalc *timeOut = (timeOutCalc *)arg;
+    printf("I am in the time out thread");
 
-    while ( (double)( (clock_t) clock() - timeOut->start)/ CLOCKS_PER_SEC < timeOut->maxTime ) {/// wait for x seconds to get the request from the client
+    while ((double)((clock_t)clock() - timeOut->start) / CLOCKS_PER_SEC < timeOut->maxTime)
+    { /// wait for x seconds to get the request from the client
 
         if (timeOut->loc == 1) { /// if the request is received
-            printf("server receive request from client %d\n",  timeOut->new_fd);
+            printf("server receive request from client %d\n", timeOut->new_fd);
             printf("server received request at %ld\n", clock());
 
             while (timeOut->loc == 1) {
@@ -279,32 +269,35 @@ void *calculateTimeOut(void *arg)
     }
 
     printf("Waited for %d seconds, closing the connection\n", timeOut->maxTime);
-    timeOut->start = -1;/// reset the start time to -1 to indicate that the connection is closed
+    timeOut->start = -1; /// reset the start time to -1 to indicate that the connection is closed
 
     pthread_mutex_lock(&lock);
     removeSocket(timeOut->new_fd);
     numClients--;
     pthread_mutex_unlock(&lock);
 
-    close( timeOut->new_fd);         /// close the connection
+    close(timeOut->new_fd); /// close the connection
 
-    pthread_exit(NULL);        /// exit the thread
+    pthread_exit(NULL); /// exit the thread
 }
-void updateTimeOut(){
-    connectionTimeOut = numClients? MAX_TIMEOUT/numClients : MAX_TIMEOUT;
-    printf("Currently handeling %d connections\nTimeout is %f seconds\n",numClients, connectionTimeOut);
+
+void updateTimeOut()
+{
+    connectionTimeOut = numClients ? MAX_TIMEOUT / numClients : MAX_TIMEOUT;
+    printf("Currently handeling %d connections\nTimeout is %f seconds\n", numClients, connectionTimeOut);
 }
 /***
 this function will be called to handle each client
  I should make local variables for each thread avoid getting the wrong value
  from the global variables
 ***/
-void *handleClient(void *new_fd) {
+void *handleClient(void *new_fd)
+{
     //// get the argument from the thread
-    int client_fd = *(int *) new_fd;
+    int client_fd = *(int *)new_fd;
 
-    timeOutCalc *timeOut = (timeOutCalc *) malloc(sizeof(timeOutCalc)) ;
-    timeOut->start = (clock_t) clock();
+    timeOutCalc *timeOut = (timeOutCalc *)malloc(sizeof(timeOutCalc));
+    timeOut->start = (clock_t)clock();
     timeOut->loc = 0;
     timeOut->maxTime = 10;
     timeOut->new_fd = client_fd;
@@ -314,31 +307,34 @@ void *handleClient(void *new_fd) {
     int valread;
     char buffer[1024] = {0};
 
-    while (timeOut->start != -1){
-        timeOut->loc  = 0;         //// Make the calculateTimeOut thread start waiting the time out if the client doesn't send the request in 10 seconds
-        memset(buffer, 0, sizeof buffer);         //// wait reading from the client
+    while (timeOut->start != -1) {
+        timeOut->loc = 0;                 //// Make the calculateTimeOut thread start waiting the time out if the client doesn't send the request in 10 seconds
+        memset(buffer, 0, sizeof buffer); //// wait reading from the client
         valread = read(client_fd, buffer, 1024);
         if (valread == 0) {
             printf("client %d closed the connection\n", client_fd);
             break;
-        } else if (valread == -1) {
+        }
+        else if (valread == -1) {
             printf("error reading from the client %d\n", client_fd);
             break;
         }
-        timeOut->loc  = 1;            //// Make the calculateTimeOut thread stop waiting the time out if the client sends the request in 10 seconds
+        timeOut->loc = 1; //// Make the calculateTimeOut thread stop waiting the time out if the client sends the request in 10 seconds
         RequestType requestType = parseRequest(buffer);
         if (requestType == GET) {
             printf("GET request\n");
             handleGetRequest(client_fd, buffer);
-        } else if (requestType == POST) {
+        }
+        else if (requestType == POST) {
             printf("POST request\n");
             handlePostRequest(client_fd, buffer);
-        } else {
+        }
+        else {
             printf("Invalid request\n");
             sendResponse(client_fd, not_found);
         }
         //// reset the start time for the calculateTimeOut thread then it will start waiting for 10 seconds again
-        timeOut->start = (clock_t) clock();
+        timeOut->start = (clock_t)clock();
     }
 
     return NULL;

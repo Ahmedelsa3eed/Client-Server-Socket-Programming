@@ -38,30 +38,31 @@ void readFile(char *fileName);
 void saveFile(char *filePath, size_t nBytes, size_t startLineSize);
 RESPONSETYPE parseResponse(char *res);
 char *getResStartLine();
+void constructPostReqHeader();
 
 int main(int argc, char const *argv[])
 {
-//    if (argc > 1) {
-//        command.hostName = (char *)malloc(strlen(argv[1]) + 1);
-//        strcpy(command.hostName, argv[1]);
-//    }
-//    if (argc > 2) {
-//        command.port = (char *)malloc(strlen(argv[2]) + 1);
-//        strcpy(command.port, argv[2]);
-//    }
-//    else {
-//        command.port = "80";
-//    }
-//
+    if (argc > 1) {
+        command.hostName = (char *)malloc(strlen(argv[1]) + 1);
+        strcpy(command.hostName, argv[1]);
+    }
+    if (argc > 2) {
+        command.port = (char *)malloc(strlen(argv[2]) + 1);
+        strcpy(command.port, argv[2]);
+    }
+    else {
+        command.port = "80";
+    }
+
     if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         printf("\n Socket creation error \n");
         return -1;
     }
 
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(atoi("8080"));
+    serv_addr.sin_port = htons(atoi(command.port));
     // Convert IPv4 addresses from text to binary form
-    if (inet_pton(AF_INET,"127.0.0.1", &serv_addr.sin_addr) == -1) {
+    if (inet_pton(AF_INET, command.hostName, &serv_addr.sin_addr) == -1) {
         printf("\nInvalid address/ Address not supported \n");
         return -1;
     }
@@ -79,6 +80,8 @@ int main(int argc, char const *argv[])
     free(command.hostName);
     free(command.port);
 
+    close(client_fd);
+    close(sock_fd);
     return 0;
 }
 
@@ -94,7 +97,6 @@ void parseCommands()
         parseSingleCommand();
         memset(commands_buff, 0, sizeof commands_buff);
         commandHandler();
-        sleep(2);
     }
 }
 
@@ -115,6 +117,7 @@ void parseSingleCommand()
 
 void commandHandler()
 {
+    memset(buffer, 0, sizeof(buffer));
     if (strcmp(command.type, "client_get") == 0) {
         char *req_header = constructGetReqHeader();
         if (send(sock_fd, req_header, strlen(req_header), 0) == -1) {
@@ -123,7 +126,6 @@ void commandHandler()
         }
         free(req_header);
         size_t nBytes;
-        memset(buffer, 0, sizeof(buffer));
         if ((nBytes = read(sock_fd, buffer, MAXDATASIZE)) > 0) {
             char *resStartLine = getResStartLine();
             if (parseResponse(resStartLine) == OK) {
@@ -131,31 +133,23 @@ void commandHandler()
             }
             memset(buffer, 0, sizeof(buffer));
         }
-
     }
     else if (strcmp(command.type, "client_post") == 0) {
-        send(sock_fd, postStartLine, strlen(postStartLine), 0);
-        char resBuffer[1024] = {0};
-        read(sock_fd, resBuffer, 1024);
-        printf("client: %s\n", resBuffer);
-        if (parseResponse(resBuffer) == OK) {
-            readFile(command.filePath);
-            send(sock_fd, buffer, MAXDATASIZE, 0);
-            memset(buffer, 0, sizeof(buffer));
-        }
+        constructPostReqHeader();
+        readFile(command.filePath);
     }
-    else printf("Not supported client command!\n");
+    else printf("Client: Not supported client command!\n");
 }
 
 char* constructGetReqHeader()
 {
-    // example of request start line
+    // example of get request start line
     // GET /index.html HTTP/1.1\r\n
     char *req_header = (char *) malloc(100);
     strcpy(req_header,  "GET /");
     strcat(req_header, command.filePath);
     strcat(req_header, httpVersion);
-    strcat(req_header, "\r\n");
+    strcat(req_header, "\r\n\r\n");
     return req_header;
 }
 
@@ -169,6 +163,17 @@ char *getResStartLine()
     return resStartLine;
 }
 
+void constructPostReqHeader()
+{
+    // example of post request start line
+    // POST / HTTP/1.1\r\n
+    strcpy(buffer, postStartLine);
+    strcat(buffer, "Host: ");
+    strcat(buffer, command.hostName);
+    strcat(buffer, "\r\n");
+    strcat(buffer, "Connection: keep-alive\r\n");
+}
+
 void readFile(char *fileName)
 {
     FILE *fptr;
@@ -176,10 +181,39 @@ void readFile(char *fileName)
         fprintf(stderr, "Couldn't open file for reading. \n");
         return;
     }
-    unsigned int nBytes = 0;
-    while(fread(&buffer[nBytes], sizeof(char), 1, fptr) == 1) {
-        nBytes++;
+
+    fseek(fptr, 0L, SEEK_END);
+
+    // calculating the size of the file
+    int contentLen = ftell(fptr);
+    fseek(fptr, 0L, SEEK_SET);
+
+    // write the content-length into the header
+    strcat(buffer, "Content-Length: ");
+    char snum[12];
+    sprintf(snum, "%d", contentLen);
+    strcat(buffer, snum);
+    strcat(buffer, "\r\n\r\n");
+
+    // send the header
+    send(sock_fd, buffer, MAXDATASIZE, 0);
+    
+
+    // send the body
+    long int nBytes = 0;
+    while (nBytes < contentLen) { // send nBytes body
+        memset(buffer, 0, sizeof(buffer));
+        int buffSize = 0;
+        while(fread(&buffer[buffSize], sizeof(char), 1, fptr) == 1) {
+            nBytes++;
+            buffSize++;
+            if (buffSize >= MAXDATASIZE - 1) {
+                break;
+            }
+        }
+        send(sock_fd, buffer, buffSize, 0);
     }
+    
     fclose(fptr);
 }
 
