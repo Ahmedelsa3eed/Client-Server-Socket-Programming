@@ -1,7 +1,7 @@
 # Client Server with Socket Programming in C/C++
 
 ## Introduction
-Useing sockets to implement a simple web client that communicates with a web server using a restricted subset of HTTP.
+Using sockets to implement a simple web client that communicates with a web server using a restricted subset of HTTP.
 
 ## Technologies
 - Socket Programming in C
